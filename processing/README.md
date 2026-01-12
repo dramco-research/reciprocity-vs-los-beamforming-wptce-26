@@ -1,6 +1,12 @@
 ### Processing
 
-Helper scripts for preparing TX phases and visualizing measurements.
+Helper scripts for generating TX phases and visualizing measurements.
+
+#### Phase generation
+- `compute-tx-weights.py`: compute Friis/MRT weights and phases, and write:
+  - `../client/tx-phases-friis.yml`
+  - `../client/tx-weights-friis.yml`
+  Note: this script downloads the tile antenna locations from GitHub.
 
 #### Plotting
 - `plot-values-positions-2d.py`: per-folder matplotlib heatmap; set `FOLDER` inside the script.
@@ -8,11 +14,7 @@ Helper scripts for preparing TX phases and visualizing measurements.
   ```
   python plot_all_folders_heatmap.py --plot-all --plot-movement
   ```
-- `plot_all_folders_heatmap_live.py`: Plotly/Dash heatmap that refreshes every 2s (defaults to newest folder).
 
-#### Energy-ball post-processing
-- `process-energy-ball.py`: summarizes `server/record/data/exp-*.yml`, plots iteration power, and rewrites `client/tx-phases-energy-ball.yml` with the best phases.
+#### Reference geometry
+- `room.xml`: room geometry reference used by some tooling.
 
-#### Phase generation
-- `compute-tx-phases.py`: fetch tile geometry and write `client/tx-phases-friis.yml` and `client/tx-phases-benchmark.yml`.
-- `compute-tx-weights-sionna.py`: generate Sionna-based weights/phases (`tx-weights-sionna.yml`, `tx-phases-sionna-<specular_order>SDR.yml`).

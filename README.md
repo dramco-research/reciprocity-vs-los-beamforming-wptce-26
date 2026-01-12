@@ -1,217 +1,96 @@
-# 📐 Geometry-Based RF Wireless Power Transfer
+# Geometry-Based RF Wireless Power Transfer (WPTCE'26)
 
-Python tooling to coordinate a geometry-aware wireless power transfer experiment over distributed tiles (Raspberry Pi + USRP B210) using a ZMQ control plane and tile-management Ansible playbooks.
+Python tooling to coordinate a geometry-aware wireless power transfer experiment over distributed tiles (Raspberry Pi + USRP B210), using a ZMQ control plane and Ansible playbooks from the `tile-management` repo.
 
----
+## Repository layout
+- `experiment-settings.yaml`: central experiment config (tiles, RF params, server ports, client script + args)
+- `server/`: control-node utilities (provision/update tiles, start/stop clients, run the ZMQ coordinator)
+- `client/`: tile-side scripts and calibration/phase YAMLs
+- `processing/`: TX phase generation and plotting scripts
+- `lib/`: shared helpers
+- `data/`: recorded measurements and generated heatmaps
 
-## ✨ At a glance
-- **Control plane:** ZMQ sync + Ansible orchestration
-- **Clients:** Raspberry Pi tiles running USRP B210 scripts
-- **Outputs:** Heatmaps, per-iteration energy-ball logs, TX phase YAMLs
-- **Typical loop:** generate phases → deploy → run → record → plot → iterate
+## Prerequisites (control node)
+- Python 3 and Ansible
+- SSH access to the tiles
+- `tile-management` checked out at `~/tile-management` (or let `server/setup-server.sh` clone/update it)
+- Tiles present in `~/tile-management/inventory/hosts.yaml`
 
----
-
-## 🧭 Repository layout
-- `experiment-settings.yaml`: central experiment config (tile groups, RF params, server host, client script + args)
-- `server/`: control-node tooling for provisioning tiles, updating experiment artifacts, starting/stopping clients, and the ZMQ coordinator
-- `client/`: tile scripts + calibration data (`cal-settings.yml`) + best-phase snapshots (`tx-phases-*.yml`)
-- `processing/`: TX phase generation, post-processing, and plotting (matplotlib + Plotly/Dash)
-- `lib/`: shared helpers (energy profiler, YAML utilities)
-- `pictures/`: diagrams/results
-
----
-
-<details>
-<summary>✅ Prerequisites</summary>
-
-- Control machine with Python 3, Git/SSH access to the tiles, and Ansible available
-- `tile-management` repo checked out at `~/tile-management` (or let `server/setup-server.sh` clone/update it)
-- Tiles listed in `~/tile-management/inventory/hosts.yaml` and reachable via SSH; hostnames follow `rpi-<id>`
-- UHD/B210 stack on the tiles (validated by `server/setup-clients.py`)
-
-</details>
-
----
-
-<details>
-<summary>🛠️ Setup (control node)</summary>
-
-1) **Prep TX phase files**
-
-- Sionna ray-tracing helper:
-```bash
-cd processing
-python compute-tx-weights-sionna.py
-cd ..
-```
-
-- Energy-ball workflow (post-process latest run):
-```bash
-python processing/process-energy-ball.py --plot
-```
-
-2) **Bootstrap the virtualenv and pull tile-management**
+## Typical workflow
+1) Create the control-node virtualenv and pull/update `tile-management`
 ```bash
 cd server
 ./setup-server.sh
 source bin/activate
 ```
 
-3) **Configure** `experiment-settings.yaml` (server host/IP, tile group(s), RF params, `client_script_name`/`client_script_args`, extra apt packages)
+2) Generate/select TX phases
+```bash
+python processing/compute-tx-weights.py
+```
+This writes `client/tx-phases-friis.yml` (and `client/tx-weights-friis.yml`). Note: it downloads the tile antenna locations from GitHub.
 
-4) **Prepare tiles** (apt, repos, UHD)
+3) Configure `experiment-settings.yaml`
+- Set `server.host` and the `tiles` list/group
+- Pick a `client_script_name` (e.g. `run_gbwpt_phases.py`, `run_gbwpt_random_phases.py`, `run_reciprocity.py`)
+- Adjust `client_script_args` (including `--tx-phase-file` when applicable)
+
+4) Prepare tiles (apt, repos, UHD) and deploy the experiment repo/settings
 ```bash
 python server/setup-clients.py --ansible-output
-```
-Flags: `--skip-apt`, `--repos-only`, `--install-only`, `--check-uhd-only`
-
-5) **Push code/settings to tiles**
-```bash
 python server/update-experiment.py --ansible-output
 ```
 
-6) **Start/stop the experiment service**
+5) Start the clients and run the ZMQ server
 ```bash
-python server/run-clients.py --start   # or --stop
-```
-
-</details>
-
----
-
-<details>
-<summary>📡 Running an experiment</summary>
-
-- Start the ZMQ server (with venv active):
-```bash
+python server/run-clients.py --start
 python server/run_server.py
 ```
+Clients wait for sync, transmit for the configured duration, then reply with `tx-done`.
 
-- Tiles run the client defined in `experiment-settings.yaml` (e.g. `client/run_energy_ball.py`).  
-Manual example on a tile:
-```bash
-python client/run_quasi_multi_tone.py \
-  --config-file /home/pi/geometry-based-wireless-power-transfer/experiment-settings.yaml
-```
-
-Clients wait for `tx-start`, transmit for the requested duration, then reply with `tx-done`.
-
-</details>
-
----
-
-<details>
-<summary>🧪 Recording measurements</summary>
-
+## Recording & plotting
 - Energy-profiler recorder (update `FOLDER` in `server/record/record-meas-energy-profiler.py`):
 ```bash
 python server/record/record-meas-energy-profiler.py
 ```
+Autosaves to `data/<FOLDER>/<timestamp>_{positions,values}.npy`.
 
-- Autosaves every `SAVE_EVERY` seconds to:
-`data/<FOLDER>/<timestamp>_{positions,values}.npy`
-
-</details>
-
----
-
-<details>
-<summary>🧠 Experiment workflows</summary>
-
-**Fixed-phase transmit (`run_gbwpt_phases.py`)**
-- Uses phases defined in `settings.yml`
-- Requires: `sync-server.py`, XY plotter (TTRPI5), Qualisys positioner, `server/record/record-meas-energy-profiler.py`
-- Plotting: `processing/plot_all_folders_heatmap.py` or `processing/plot-values-positions-2d.py`
-
-**Energy-ball (simulated annealing) transmit**
-- Iteratively updates phases via simulated annealing
-- Server: `server/record/server-energy-ball.py` or `server-energy-ball-max.py`
-- Clients: `client/run_energy_ball.py` or `client/run_energy_ball_max.py`
-- Post-process: `processing/process-energy-ball.py --plot`
-- Plotting: matplotlib heatmaps or `processing/plot_all_folders_heatmap_live.py`
-
-</details>
-
----
-
-<details>
-<summary>📈 Plotting & post-processing</summary>
-
-- Per-folder heatmap:
+- Plot heatmaps:
 ```bash
-cd processing
-python plot-values-positions-2d.py
+python processing/plot_all_folders_heatmap.py --plot-all
 ```
 
-- Aggregate heatmaps (newest folder by default):
-```bash
-python processing/plot_all_folders_heatmap.py
-```
-Options: `--plot-all`, `--plot-movement`
+## Data
 
-- Live Plotly/Dash heatmap:
-```bash
-python processing/plot_all_folders_heatmap_live.py \
-  --host 0.0.0.0 --port 8050 --target 3.181 1.774 0.266
-```
+The `data/` folder contains recorded measurements and generated plots. Most runs include:
+- `<timestamp>_positions.npy` and `<timestamp>_values.npy`
+- `heatmap.png`
+- optionally `heatmap_vs_RANDOM_dB.png`
 
-- Energy-ball YAML summarizer:
+Regenerate heatmaps:
 ```bash
-python processing/process-energy-ball.py [path/to/exp-YYYYMMDDHHMMSS.yml]
+python processing/plot_all_folders_heatmap.py --plot-all
 ```
 
-</details>
+| Folder | Heatmap | Baseline vs RANDOM (dB) |
+| --- | --- | --- |
+| FRIIS-0 | ![FRIIS-0](data/FRIIS-0/heatmap.png) | ![FRIIS-0 vs RANDOM](data/FRIIS-0/heatmap_vs_RANDOM_dB.png) |
+| FRIIS-ABS-0 | ![FRIIS-ABS-0](data/FRIIS-ABS-0/heatmap.png) | N/A |
+| FRIIS-ABS-REFL-0 | ![FRIIS-ABS-REFL-0](data/FRIIS-ABS-REFL-0/heatmap.png) | N/A |
+| RANDOM | ![RANDOM](data/RANDOM/heatmap.png) | ![RANDOM vs RANDOM](data/RANDOM/heatmap_vs_RANDOM_dB.png) |
+| RANDOM-1 | ![RANDOM-1](data/RANDOM-1/heatmap.png) | ![RANDOM-1 vs RANDOM](data/RANDOM-1/heatmap_vs_RANDOM_dB.png) |
+| RANDOM-2 | ![RANDOM-2](data/RANDOM-2/heatmap.png) | ![RANDOM-2 vs RANDOM](data/RANDOM-2/heatmap_vs_RANDOM_dB.png) |
+| RANDOM-ABS-REFL-0 | ![RANDOM-ABS-REFL-0](data/RANDOM-ABS-REFL-0/heatmap.png) | N/A |
+| RECI-0 | ![RECI-0](data/RECI-0/heatmap.png) | ![RECI-0 vs RANDOM](data/RECI-0/heatmap_vs_RANDOM_dB.png) |
+| RECI-1 | ![RECI-1](data/RECI-1/heatmap.png) | ![RECI-1 vs RANDOM](data/RECI-1/heatmap_vs_RANDOM_dB.png) |
+| RECI-3 | ![RECI-3](data/RECI-3/heatmap.png) | N/A |
+| RECI-ABS-0 | ![RECI-ABS-0](data/RECI-ABS-0/heatmap.png) | N/A |
+| RECI-ABS-REFL-0 | ![RECI-ABS-REFL-0](data/RECI-ABS-REFL-0/heatmap.png) | N/A |
+| RECI-merged | ![RECI-merged](data/RECI-merged/heatmap.png) | ![RECI-merged vs RANDOM](data/RECI-merged/heatmap_vs_RANDOM_dB.png) |
 
----
-
-<details>
-<summary>⚙️ TX phase generation</summary>
-
-- Friis model:
-```bash
-python processing/compute-tx-phases.py
-```
-
-- Energy-ball best-phase update:
-```bash
-python processing/process-energy-ball.py
-```
-
-</details>
-
----
-
-<details>
-<summary>🧾 Reference waveform for reciprocity tests</summary>
-
-```bash
-python3 client/run-ref.py --args "type=b200" \
-  --freq 920e6 --rate 250e3 --duration 1E6 --channels 0 \
-  --wave-ampl 0.8 --gain 73 -w sine --wave-freq 0
-```
-
-</details>
-
----
-
-<details>
-<summary>🧰 Maintenance utilities</summary>
-
+## Maintenance utilities
 - `server/cleanup-clients.py`, `server/reboot-clients.py`
-- `client/usrp-cal-bf.py`
-- `ref-RF-cable.yml` and `tx-phases-*.yml` hold calibration data
+- `client/ref-RF-cable.yml` and `client/tx-phases-*.yml` contain calibration and phase data
 
-</details>
-
----
-
-## Random benchmarks
-- `RANDOM`: 42 ceiling antennas with fixed phases (reference)
-- `RANDOM-1`: 41 ceiling antennas with a new random phase every baseband sample
-- `RANDOM-2`: 42 ceiling antennas with phases re-randomized every 100 ms (held constant within each 100 ms window)
-
----
-
-## 📜 License
+## License
 MIT (see `LICENSE`).
