@@ -38,6 +38,14 @@ Key paper result (beamforming gain relative to RPS):
 - `data/RECI-*` (CSI / reciprocity)
 - `data/RANDOM*` (random baselines; multiple variants are included)
 
+## Geometry note 
+The original antenna position file used for GEO beamforming had a systematic offset: all antenna x-coordinates should be shifted by **+7.5 cm**. As a result, the GEO focal point/target location is effectively shifted by the same amount in x when using the uncorrected positions. This offset is corrected manually in the paper.
+
+### Setup images (from the paper)
+![Energy profiler, XY plotter, and ceiling-integrated TX array](setup/wptce-techtile.png)
+![oLoS scenario with reflector and absorbers](setup/wptce-techtile-refl-abs.png)
+![Close-up of TX array elements](setup/elements.png)
+
 ## Experimental setup (paper)
 - Distributed indoor ceiling array: 8 m x 4 m (Techtile)
 - Active TX antennas: 41 (one element was faulty during the experiments)
@@ -122,6 +130,18 @@ python3 client/usrp_pilot.py --phase 0
 Regenerate heatmaps from recorded `data/*` runs:
 ```bash
 python processing/plot_all_folders_heatmap.py --plot-all
+```
+
+## Citing (placeholder)
+This is a placeholder citation entry; replace it with the final BibTeX from the published paper.
+
+```bibtex
+@inproceedings{TODO_wptce26_geometry_reciprocity_wpt,
+  title        = {Experimental Evaluation of Geometry and Reciprocity-Based Beamforming with Large Arrays for RF Wireless Power Transfer},
+  author       = {TODO},
+  booktitle    = {TODO (WPTCE'26 / venue TBD)},
+  year         = {2026},
+}
 ```
 
 ## License
